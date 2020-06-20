@@ -33,31 +33,31 @@ func (fc *FlowController) Close() error {
 func (fc *FlowController) ReceiveData(ctx context.Context, dataSize int, callback func()) error {
 	return fc.dataSemaphore.WaitFor(ctx, fc.lock, dataSize, func() {
 		callback()
-		fc.bufferSemaphore.Signal(semaphore.NoLock, dataSize)
+		fc.bufferSemaphore.Signal(context.Background(), semaphore.NoLock, dataSize)
 	})
 }
 
-func (fc *FlowController) TryReceiveData(dataSize int, callback func()) (bool, error) {
-	return fc.dataSemaphore.TryWaitFor(fc.lock, dataSize, func() {
+func (fc *FlowController) TryReceiveData(ctx context.Context, dataSize int, callback func()) (bool, error) {
+	return fc.dataSemaphore.TryWaitFor(ctx, fc.lock, dataSize, func() {
 		callback()
-		fc.bufferSemaphore.Signal(semaphore.NoLock, dataSize)
+		fc.bufferSemaphore.Signal(context.Background(), semaphore.NoLock, dataSize)
 	})
 }
 
 func (fc *FlowController) SendData(ctx context.Context, dataSize int, callback func()) error {
 	return fc.bufferSemaphore.WaitFor(ctx, fc.lock, dataSize, func() {
 		callback()
-		fc.dataSemaphore.Signal(semaphore.NoLock, dataSize)
+		fc.dataSemaphore.Signal(context.Background(), semaphore.NoLock, dataSize)
 	})
 }
 
-func (fc *FlowController) TrySendData(dataSize int, callback func()) (bool, error) {
-	return fc.bufferSemaphore.TryWaitFor(fc.lock, dataSize, func() {
+func (fc *FlowController) TrySendData(ctx context.Context, dataSize int, callback func()) (bool, error) {
+	return fc.bufferSemaphore.TryWaitFor(ctx, fc.lock, dataSize, func() {
 		callback()
-		fc.dataSemaphore.Signal(semaphore.NoLock, dataSize)
+		fc.dataSemaphore.Signal(context.Background(), semaphore.NoLock, dataSize)
 	})
 }
 
-func (fc *FlowController) GrowBuffer(additionalBufferSize int) error {
-	return fc.bufferSemaphore.Signal(fc.lock, additionalBufferSize)
+func (fc *FlowController) GrowBuffer(ctx context.Context, additionalBufferSize int) error {
+	return fc.bufferSemaphore.Signal(ctx, fc.lock, additionalBufferSize)
 }

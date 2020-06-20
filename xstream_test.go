@@ -12,19 +12,19 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestStreamReadFull(t *testing.T) {
+func TestStreamRead(t *testing.T) {
 	s := new(xstream.XStream).Init(100)
 
-	err := s.ReadFull(context.Background(), 0, func(data []byte) {
+	err := s.Read(context.Background(), 0, func(data []byte) {
 		assert.Len(t, data, 0)
 	})
 	assert.NoError(t, err)
 
-	err = s.ReadFull(context.Background(), 101, func([]byte) {})
+	err = s.Read(context.Background(), 101, func([]byte) {})
 	assert.Error(t, err, xstream.ErrSizeExceeded)
 
 	go func() {
-		ok, err := s.TryWriteAll(25, func(buffer []byte) {
+		ok, err := s.TryWrite(context.Background(), 25, func(buffer []byte) {
 			assert.Len(t, buffer, 25)
 		})
 		assert.True(t, ok)
@@ -32,7 +32,7 @@ func TestStreamReadFull(t *testing.T) {
 	}()
 
 	for i := 0; i < 2; i++ {
-		err = s.ReadFull(context.Background(), 10, func(data []byte) {
+		err = s.Read(context.Background(), 10, func(data []byte) {
 			assert.Len(t, data, 10)
 		})
 		assert.NoError(t, err)
@@ -40,14 +40,14 @@ func TestStreamReadFull(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	err = s.ReadFull(ctx, 10, func(data []byte) {
+	err = s.Read(ctx, 10, func(data []byte) {
 		assert.Len(t, data, 10)
 	})
 	assert.Error(t, err, context.DeadlineExceeded)
 
 	go func() {
 		time.Sleep(50 * time.Millisecond)
-		ok, err := s.TryWriteAll(5, func(buffer []byte) {
+		ok, err := s.TryWrite(ctx, 5, func(buffer []byte) {
 			assert.Len(t, buffer, 5)
 		})
 		assert.True(t, ok)
@@ -56,7 +56,7 @@ func TestStreamReadFull(t *testing.T) {
 
 	ctx, cancel = context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	err = s.ReadFull(ctx, 10, func(data []byte) {
+	err = s.Read(ctx, 10, func(data []byte) {
 		assert.Len(t, data, 10)
 	})
 	assert.NoError(t, err)
@@ -66,54 +66,54 @@ func TestStreamReadFull(t *testing.T) {
 		assert.NoError(t, err)
 	}()
 
-	err = s.ReadFull(context.Background(), 10, func([]byte) {})
+	err = s.Read(context.Background(), 10, func([]byte) {})
 	assert.Error(t, err, xstream.ErrClosed)
-	err = s.ReadFull(context.Background(), 0, func([]byte) {})
+	err = s.Read(context.Background(), 0, func([]byte) {})
 	assert.Error(t, err, xstream.ErrClosed)
 }
 
-func TestStreamTryReadFull(t *testing.T) {
+func TestStreamTryRead(t *testing.T) {
 	s := new(xstream.XStream).Init(100)
 
-	ok, err := s.TryReadFull(0, func(data []byte) {
+	ok, err := s.TryRead(context.Background(), 0, func(data []byte) {
 		assert.Len(t, data, 0)
 	})
 	assert.True(t, ok)
 	assert.NoError(t, err)
 
-	ok, err = s.TryReadFull(101, func([]byte) {})
+	ok, err = s.TryRead(context.Background(), 101, func([]byte) {})
 	assert.False(t, ok)
 	assert.NoError(t, err)
 
-	ok, err = s.TryReadFull(10, func([]byte) {})
+	ok, err = s.TryRead(context.Background(), 10, func([]byte) {})
 	assert.False(t, ok)
 	assert.NoError(t, err)
 
-	ok, err = s.TryWriteAll(25, func(buffer []byte) {
+	ok, err = s.TryWrite(context.Background(), 25, func(buffer []byte) {
 		assert.Len(t, buffer, 25)
 	})
 	assert.True(t, ok)
 	assert.NoError(t, err)
 
 	for i := 0; i < 2; i++ {
-		ok, err = s.TryReadFull(10, func(buffer []byte) {
+		ok, err = s.TryRead(context.Background(), 10, func(buffer []byte) {
 			assert.Len(t, buffer, 10)
 		})
 		assert.True(t, ok)
 		assert.NoError(t, err)
 	}
 
-	ok, err = s.TryReadFull(10, func([]byte) {})
+	ok, err = s.TryRead(context.Background(), 10, func([]byte) {})
 	assert.False(t, ok)
 	assert.NoError(t, err)
 
-	ok, err = s.TryWriteAll(5, func(buffer []byte) {
+	ok, err = s.TryWrite(context.Background(), 5, func(buffer []byte) {
 		assert.Len(t, buffer, 5)
 	})
 	assert.True(t, ok)
 	assert.NoError(t, err)
 
-	ok, err = s.TryReadFull(10, func(buffer []byte) {
+	ok, err = s.TryRead(context.Background(), 10, func(buffer []byte) {
 		assert.Len(t, buffer, 10)
 	})
 	assert.True(t, ok)
@@ -122,30 +122,30 @@ func TestStreamTryReadFull(t *testing.T) {
 	err = s.Close()
 	assert.NoError(t, err)
 
-	ok, err = s.TryReadFull(10, func([]byte) {})
+	ok, err = s.TryRead(context.Background(), 10, func([]byte) {})
 	assert.False(t, ok)
 	assert.Error(t, err, xstream.ErrClosed)
 }
 
-func TestStreamWriteAll(t *testing.T) {
+func TestStreamWrite(t *testing.T) {
 	s := new(xstream.XStream).Init(100)
 
-	err := s.WriteAll(context.Background(), 0, func(buffer []byte) {
+	err := s.Write(context.Background(), 0, func(buffer []byte) {
 		assert.Len(t, buffer, 0)
 	})
 	assert.NoError(t, err)
 
-	err = s.WriteAll(context.Background(), 101, func([]byte) {})
+	err = s.Write(context.Background(), 101, func([]byte) {})
 	assert.Error(t, err, xstream.ErrSizeExceeded)
 
-	ok, err := s.TryWriteAll(100, func(buffer []byte) {
+	ok, err := s.TryWrite(context.Background(), 100, func(buffer []byte) {
 		assert.Len(t, buffer, 100)
 	})
 	assert.True(t, ok)
 	assert.NoError(t, err)
 
 	go func() {
-		ok, err := s.TryReadFull(25, func(data []byte) {
+		ok, err := s.TryRead(context.Background(), 25, func(data []byte) {
 			assert.Len(t, data, 25)
 		})
 		assert.True(t, ok)
@@ -153,7 +153,7 @@ func TestStreamWriteAll(t *testing.T) {
 	}()
 
 	for i := 0; i < 2; i++ {
-		err = s.WriteAll(context.Background(), 10, func(buffer []byte) {
+		err = s.Write(context.Background(), 10, func(buffer []byte) {
 			assert.Len(t, buffer, 10)
 		})
 		assert.NoError(t, err)
@@ -161,14 +161,14 @@ func TestStreamWriteAll(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	err = s.WriteAll(ctx, 10, func(buffer []byte) {
+	err = s.Write(ctx, 10, func(buffer []byte) {
 		assert.Len(t, buffer, 10)
 	})
 	assert.Error(t, err, context.DeadlineExceeded)
 
 	go func() {
 		time.Sleep(50 * time.Millisecond)
-		ok, err := s.TryReadFull(5, func(data []byte) {
+		ok, err := s.TryRead(ctx, 5, func(data []byte) {
 			assert.Len(t, data, 5)
 		})
 		assert.True(t, ok)
@@ -177,7 +177,7 @@ func TestStreamWriteAll(t *testing.T) {
 
 	ctx, cancel = context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	err = s.WriteAll(ctx, 10, func(buffer []byte) {
+	err = s.Write(ctx, 10, func(buffer []byte) {
 		assert.Len(t, buffer, 10)
 	})
 	assert.NoError(t, err)
@@ -187,60 +187,60 @@ func TestStreamWriteAll(t *testing.T) {
 		assert.NoError(t, err)
 	}()
 
-	err = s.WriteAll(context.Background(), 10, func([]byte) {})
+	err = s.Write(context.Background(), 10, func([]byte) {})
 	assert.Error(t, err, xstream.ErrClosed)
-	err = s.WriteAll(context.Background(), 0, func([]byte) {})
+	err = s.Write(context.Background(), 0, func([]byte) {})
 	assert.Error(t, err, xstream.ErrClosed)
 }
 
-func TestStreamTryWriteAll(t *testing.T) {
+func TestStreamTryWrite(t *testing.T) {
 	s := new(xstream.XStream).Init(100)
 
-	ok, err := s.TryWriteAll(0, func(buffer []byte) {
+	ok, err := s.TryWrite(context.Background(), 0, func(buffer []byte) {
 		assert.Len(t, buffer, 0)
 	})
 	assert.True(t, ok)
 	assert.NoError(t, err)
 
-	ok, err = s.TryWriteAll(101, func([]byte) {})
+	ok, err = s.TryWrite(context.Background(), 101, func([]byte) {})
 	assert.False(t, ok)
 	assert.NoError(t, err)
 
-	ok, err = s.TryWriteAll(100, func(buffer []byte) {
+	ok, err = s.TryWrite(context.Background(), 100, func(buffer []byte) {
 		assert.Len(t, buffer, 100)
 	})
 	assert.True(t, ok)
 	assert.NoError(t, err)
 
-	ok, err = s.TryWriteAll(10, func([]byte) {})
+	ok, err = s.TryWrite(context.Background(), 10, func([]byte) {})
 	assert.False(t, ok)
 	assert.NoError(t, err)
 
-	ok, err = s.TryReadFull(25, func(data []byte) {
+	ok, err = s.TryRead(context.Background(), 25, func(data []byte) {
 		assert.Len(t, data, 25)
 	})
 	assert.True(t, ok)
 	assert.NoError(t, err)
 
 	for i := 0; i < 2; i++ {
-		ok, err = s.TryWriteAll(10, func(buffer []byte) {
+		ok, err = s.TryWrite(context.Background(), 10, func(buffer []byte) {
 			assert.Len(t, buffer, 10)
 		})
 		assert.True(t, ok)
 		assert.NoError(t, err)
 	}
 
-	ok, err = s.TryWriteAll(10, func([]byte) {})
+	ok, err = s.TryWrite(context.Background(), 10, func([]byte) {})
 	assert.False(t, ok)
 	assert.NoError(t, err)
 
-	ok, err = s.TryReadFull(5, func(data []byte) {
+	ok, err = s.TryRead(context.Background(), 5, func(data []byte) {
 		assert.Len(t, data, 5)
 	})
 	assert.True(t, ok)
 	assert.NoError(t, err)
 
-	ok, err = s.TryWriteAll(10, func(buffer []byte) {
+	ok, err = s.TryWrite(context.Background(), 10, func(buffer []byte) {
 		assert.Len(t, buffer, 10)
 	})
 	assert.True(t, ok)
@@ -249,7 +249,7 @@ func TestStreamTryWriteAll(t *testing.T) {
 	err = s.Close()
 	assert.NoError(t, err)
 
-	ok, err = s.TryWriteAll(10, func([]byte) {})
+	ok, err = s.TryWrite(context.Background(), 10, func([]byte) {})
 	assert.False(t, ok)
 	assert.Error(t, err, xstream.ErrClosed)
 }
@@ -258,14 +258,14 @@ func TestStreamEnlarge(t *testing.T) {
 	s := new(xstream.XStream).Init(100)
 	assert.Equal(t, 100, s.Size())
 
-	err := s.WriteAll(context.Background(), 101, func([]byte) {})
+	err := s.Write(context.Background(), 101, func([]byte) {})
 	assert.Error(t, err, xstream.ErrSizeExceeded)
 
-	err = s.Enlarge(1)
+	err = s.Enlarge(context.Background(), 1)
 	assert.NoError(t, err)
 	assert.Equal(t, 101, s.Size())
 
-	ok, err := s.TryWriteAll(101, func(buffer []byte) {
+	ok, err := s.TryWrite(context.Background(), 101, func(buffer []byte) {
 		assert.Len(t, buffer, 101)
 	})
 	assert.True(t, ok)
@@ -274,19 +274,19 @@ func TestStreamEnlarge(t *testing.T) {
 	err = s.Close()
 	assert.NoError(t, err)
 
-	err = s.Enlarge(1)
+	err = s.Enlarge(context.Background(), 1)
 	assert.Error(t, err, xstream.ErrClosed)
 }
 
 func TestStreamPeek(t *testing.T) {
 	s := new(xstream.XStream).Init(100)
 
-	err := s.Peek(func(data []byte) {
+	err := s.Peek(context.Background(), func(data []byte) {
 		assert.Len(t, data, 0)
 	})
 	assert.NoError(t, err)
 
-	ok, err := s.TryWriteAll(100, func(buffer []byte) {
+	ok, err := s.TryWrite(context.Background(), 100, func(buffer []byte) {
 		assert.Len(t, buffer, 100)
 		for i := range buffer {
 			buffer[i] = uint8(i)
@@ -295,7 +295,7 @@ func TestStreamPeek(t *testing.T) {
 	assert.True(t, ok)
 	assert.NoError(t, err)
 
-	err = s.Peek(func(data []byte) {
+	err = s.Peek(context.Background(), func(data []byte) {
 		assert.Len(t, data, 100)
 		f := true
 		for i := range data {
@@ -335,7 +335,7 @@ func TestStreamWriteAndRead(t *testing.T) {
 					d := time.Now().Add(time.Duration(7-rand.Intn(10)) * time.Millisecond)
 					ctx, cancel := context.WithDeadline(context.Background(), d)
 					bs := 1 + rand.Intn(2*l)
-					err := s.WriteAll(ctx, bs, func(buffer []byte) {
+					err := s.Write(ctx, bs, func(buffer []byte) {
 						for i := range buffer {
 							buffer[i] = 111
 						}
@@ -374,7 +374,7 @@ func TestStreamWriteAndRead(t *testing.T) {
 					d := time.Now().Add(time.Duration(7-rand.Intn(10)) * time.Millisecond)
 					ctx, cancel := context.WithDeadline(context.Background(), d)
 					ds := 1 + rand.Intn(2*l)
-					err := s.ReadFull(ctx, ds, func(data []byte) {
+					err := s.Read(ctx, ds, func(data []byte) {
 						f := true
 						for i := range data {
 							f = f && data[i] == 111

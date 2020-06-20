@@ -1,45 +1,52 @@
 package xstream
 
 import (
-	"sync"
-	"sync/atomic"
+	"context"
 
+	"errors"
 	"github.com/roy2220/xstream/internal/flowcontroller"
 )
 
 type lock struct {
-	isClosed int32
-	mutex    sync.Mutex
+	c chan struct{}
 }
 
 var _ = flowcontroller.Lock(&lock{})
 
-func (l *lock) Acquire() error {
-	if atomic.LoadInt32(&l.isClosed) == 1 {
-		return l.ClosedError()
+func (l *lock) Init() *lock {
+	c := make(chan struct{}, 1)
+	c <- struct{}{}
+	l.c = c
+	return l
+}
+
+func (l *lock) Acquire(ctx context.Context) error {
+	select {
+	case _, ok := <-l.c:
+		if !ok {
+			return l.ClosedError()
+		}
+
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
-
-	l.mutex.Lock()
-
-	if l.isClosed == 1 {
-		l.mutex.Unlock()
-		return l.ClosedError()
-	}
-
-	return nil
 }
 
 func (l *lock) Release() {
-	l.mutex.Unlock()
+	select {
+	case l.c <- struct{}{}:
+	default:
+		panic(errors.New("xstream: lock not acquired"))
+	}
 }
 
 func (l *lock) Close() error {
-	if err := l.Acquire(); err != nil {
-		return err
+	if _, ok := <-l.c; !ok {
+		return l.ClosedError()
 	}
 
-	defer l.Release()
-	atomic.StoreInt32(&l.isClosed, 1)
+	close(l.c)
 	return nil
 }
 

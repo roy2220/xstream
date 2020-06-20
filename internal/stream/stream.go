@@ -33,7 +33,7 @@ func (s *Stream) AcquireBuffer(bufferSize int) []byte {
 
 func (s *Stream) CommitData(dataSize int) {
 	if dataSize > s.bufferSize() {
-		panic(fmt.Errorf("stream: illegal argument: dataSize=%d", dataSize))
+		panic(fmt.Errorf("stream: illegal argument; dataSize=%d", dataSize))
 	}
 
 	s.bufferIndex += dataSize
@@ -41,7 +41,7 @@ func (s *Stream) CommitData(dataSize int) {
 
 func (s *Stream) DiscardData(dataSize int) {
 	if dataSize > s.DataSize() {
-		panic(fmt.Errorf("stream: illegal argument: dataSize=%d", dataSize))
+		panic(fmt.Errorf("stream: illegal argument; dataSize=%d", dataSize))
 	}
 
 	s.dataIndex += dataSize

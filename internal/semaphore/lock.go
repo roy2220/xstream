@@ -1,7 +1,9 @@
 package semaphore
 
+import "context"
+
 type Lock interface {
-	Acquire() error
+	Acquire(ctx context.Context) (err error)
 	Release()
 }
 
@@ -11,5 +13,5 @@ type noLock struct{}
 
 var _ = Lock(noLock{})
 
-func (noLock) Acquire() error { return nil }
-func (noLock) Release()       {}
+func (noLock) Acquire(ctx context.Context) (err error) { return }
+func (noLock) Release()                                {}

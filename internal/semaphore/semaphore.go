@@ -3,20 +3,22 @@ package semaphore
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"unsafe"
 
 	"github.com/roy2220/intrusive"
 )
 
 type Semaphore struct {
-	availableN       int
-	waiterList       intrusive.List
-	nilOrClosedError error
+	availableN  int
+	waiterList  intrusive.List
+	closedError error
+	isClosed    int32
 }
 
 func (s *Semaphore) Init(availableN int) *Semaphore {
 	if availableN < 0 {
-		panic(fmt.Errorf("semaphore: illegal argument: availableN=%d", availableN))
+		panic(fmt.Errorf("semaphore: illegal argument; availableN=%d", availableN))
 	}
 
 	s.availableN = availableN
@@ -26,10 +28,10 @@ func (s *Semaphore) Init(availableN int) *Semaphore {
 
 func (s *Semaphore) WaitFor(ctx context.Context, lock Lock, n int, callback func()) error {
 	if n < 0 {
-		panic(fmt.Errorf("semaphore: illegal argument: n=%d", n))
+		panic(fmt.Errorf("semaphore: illegal argument; n=%d", n))
 	}
 
-	waiter, err := s.tryWaitForOrEngageWaiter(lock, n, callback)
+	waiter, err := s.tryWaitForOrEngageWaiter(ctx, lock, n, callback)
 
 	if err != nil {
 		return err
@@ -39,31 +41,33 @@ func (s *Semaphore) WaitFor(ctx context.Context, lock Lock, n int, callback func
 		return nil
 	}
 
-	err2 := waiter.GetNotification(ctx)
+	if err := waiter.GetNotification(ctx); err != nil {
+		ok, err2 := s.dismissWaiter(lock, waiter)
 
-	if err2 != nil {
-		ok, err := s.dismissWaiter(lock, waiter)
-
-		if err != nil {
-			return err
+		if err2 != nil {
+			return err2
 		}
 
 		if !ok {
 			return nil
 		}
 
-		return err2
+		return err
 	}
 
-	return s.nilOrClosedError
+	if atomic.LoadInt32(&s.isClosed) != 0 {
+		return s.closedError
+	}
+
+	return nil
 }
 
-func (s *Semaphore) TryWaitFor(lock Lock, n int, callback func()) (bool, error) {
+func (s *Semaphore) TryWaitFor(ctx context.Context, lock Lock, n int, callback func()) (bool, error) {
 	if n < 0 {
-		panic(fmt.Errorf("semaphore: illegal argument: n=%d", n))
+		panic(fmt.Errorf("semaphore: illegal argument; n=%d", n))
 	}
 
-	if err := lock.Acquire(); err != nil {
+	if err := lock.Acquire(ctx); err != nil {
 		return false, err
 	}
 
@@ -71,12 +75,12 @@ func (s *Semaphore) TryWaitFor(lock Lock, n int, callback func()) (bool, error) 
 	return s.tryWaitForWithoutLock(n, callback), nil
 }
 
-func (s *Semaphore) Signal(lock Lock, n int) error {
+func (s *Semaphore) Signal(ctx context.Context, lock Lock, n int) error {
 	if n < 0 {
-		panic(fmt.Errorf("semaphore: illegal argument: n=%d", n))
+		panic(fmt.Errorf("semaphore: illegal argument; n=%d", n))
 	}
 
-	if err := lock.Acquire(); err != nil {
+	if err := lock.Acquire(ctx); err != nil {
 		return err
 	}
 
@@ -87,7 +91,8 @@ func (s *Semaphore) Signal(lock Lock, n int) error {
 }
 
 func (s *Semaphore) Close(closedError error) {
-	s.nilOrClosedError = closedError
+	s.closedError = closedError
+	atomic.StoreInt32(&s.isClosed, 1)
 
 	for it := s.waiterList.Foreach(); !it.IsAtEnd(); it.Advance() {
 		waiter := getWaiter(it.Node())
@@ -98,8 +103,8 @@ func (s *Semaphore) Close(closedError error) {
 	s.waiterList = intrusive.List{}
 }
 
-func (s *Semaphore) tryWaitForOrEngageWaiter(lock Lock, n int, callback func()) (*waiter, error) {
-	if err := lock.Acquire(); err != nil {
+func (s *Semaphore) tryWaitForOrEngageWaiter(ctx context.Context, lock Lock, n int, callback func()) (*waiter, error) {
+	if err := lock.Acquire(ctx); err != nil {
 		return nil, err
 	}
 
@@ -133,18 +138,19 @@ func (s *Semaphore) engageWaiterWithoutLock(n int, callback func()) *waiter {
 }
 
 func (s *Semaphore) dismissWaiter(lock Lock, waiter *waiter) (bool, error) {
-	if err := lock.Acquire(); err != nil {
+	if err := lock.Acquire(context.Background()); err != nil {
 		return false, err
 	}
 
 	defer lock.Release()
 
-	if waiter.IsNotified() {
+	if waiter.ListNode.IsReset() {
 		return false, nil
 	}
 
 	waiterWasFront := &waiter.ListNode == s.waiterList.Head()
 	waiter.ListNode.Remove()
+	waiter.ListNode = intrusive.ListNode{}
 
 	if waiterWasFront {
 		s.notifyWaiters()
@@ -193,15 +199,6 @@ func (w *waiter) GetNotification(ctx context.Context) error {
 
 func (w *waiter) Notify() {
 	close(w.notification)
-}
-
-func (w *waiter) IsNotified() bool {
-	select {
-	case <-w.notification:
-		return true
-	default:
-		return false
-	}
 }
 
 func getWaiter(listNode *intrusive.ListNode) *waiter {
